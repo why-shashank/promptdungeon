@@ -1,0 +1,16 @@
+{
+  "class_health": {
+    "Warrior": 120,
+    "Cleric": 100,
+    "Ranger": 90,
+    "Mage": 70,
+    "Rogue": 80
+  },
+  "class_mana": {
+    "Mage": 80,
+    "Cleric": 60,
+    "Ranger": 40,
+    "Warrior": 30,
+    "Rogue": 35
+  }
+}
