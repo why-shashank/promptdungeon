@@ -11,6 +11,9 @@ from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.prompt import Confirm, Prompt
 from rich.table import Table
+import shutil
+import requests
+from enum import Enum
 
 from .engine import GameConfig
 from .enhanced_visual_game import EnhancedVisualGame
@@ -19,60 +22,29 @@ console = Console()
 app = typer.Typer(add_completion=False, no_args_is_help=False)
 
 
+load_dotenv()
+
+
 def create_title_art():
     """Display boxed ASCII title for PromptDungeon"""
     title_lines = [
         "╔" + "═" * 118 + "╗",
         "║" + " " * 118 + "║",
-        "║          __________                               __    ________                                             " + "        ║",
+        "║          __________                               __    ________                                             "
+        + "        ║",
         "║          \\______   \\_______  ____   _____ _______/  |_  \\______ \\  __ __  ____    ____   ____  ____   ____           ║",
         "║           |     ___/\\_  __ \\/  _ \\ /     \\\\____ \\   __\\  |    |  \\|  |  \\/    \\  / ___\\_/ __ \\/  _ \\ /    \\          ║",
         "║           |    |     |  | \\(  <_> )  Y Y  \\  |_> >  |    |    `   \\  |  /   |  \\/ /_/  >  ___(  <_> )   |  \\         ║",
         "║           |____|     |__|   \\____/|__|_|  /   __/|__|   /_______  /____/|___|  /\\___  / \\___  >____/|___|  /         ║",
         "║                                         \\/|__|                  \\/           \\/ _____/      \\/           \\/          ║",
         "║" + " " * 118 + "║",
-        "║                         👾 Procedurally Generated 👾 Prompt-Powered 👾 AI-Driven 👾" + " " * 34 + "║",
+        "║                         👾 Procedurally Generated 👾 Prompt-Powered 👾 AI-Driven 👾"
+        + " " * 34
+        + "║",
         "║" + " " * 118 + "║",
         "╚" + "═" * 118 + "╝",
     ]
     console.print(("\n".join(title_lines)), style="bold bright_green")
-
-
-
-
-def show_welcome_screen():
-    """Display the beautiful welcome screen"""
-    console.clear()
-
-    # Title with gradient effect
-    title_art = create_title_art()
-    console.print(title_art, style="bold bright_cyan", justify="center")
-    console.print()
-
-    # Feature highlights
-    features_table = Table(show_header=False, show_edge=False, pad_edge=False)
-    features_table.add_column("Icon", width=4, style="bright_yellow")
-    features_table.add_column("Feature", width=25, style="bright_white")
-    features_table.add_column("Description", style="cyan")
-
-    features_table.add_row(
-        "🎮", "Real-Time Movement", "Move your character in real-time"
-    )
-    features_table.add_row("🤖", "AI-Generated Content", "Infinite unique adventures")
-    features_table.add_row("⚔️", "Tactical Combat", "Class-based combat system")
-    features_table.add_row("🗺️", "Live Mini-Map", "Dynamic world exploration")
-    features_table.add_row("💎", "Beautiful UI", "Rich terminal graphics")
-    features_table.add_row("📊", "Character Progress", "Experience, levels, and loot")
-
-    console.print(
-        Panel(
-            features_table,
-            title="✨ Features",
-            border_style="bright_green",
-            padding=(1, 2),
-        )
-    )
-    console.print()
 
 
 def check_terminal_size():
@@ -98,81 +70,109 @@ def check_terminal_size():
         console.print()
 
 
+# Status labels
+
+
+class Status(Enum):
+    READY = "✅ Ready"
+    MISSING = "❌ Missing"
+    LIMITED = "⚠️  Limited"
+    INSTALLED = "⚠️ Installed"
+
+
+def check_module(module_player_name):
+    """Check if a module can be imported"""
+    try:
+        __import__(module_player_name)
+        return True
+    except ImportError:
+        return False
+
+
+def check_ollama():
+    """Check if Ollama CLI is installed and service is running"""
+    installed = shutil.which("ollama") is not None
+    running = False
+
+    if installed:
+        try:
+            res = requests.get("http://localhost:11434/api/tags", timeout=2)
+            running = res.status_code == 200
+        except requests.RequestException:
+            pass
+
+    return {"installed": installed, "running": running}
+
+
 def check_dependencies():
-    """Check for optional dependencies"""
-    status = {"keyboard": False, "pynput": False, "openai": False, "google_ai": False}
+    """Check for optional dependencies and display their status"""
+    status = {
+        "keyboard": check_module("keyboard"),
+        "pynput": check_module("pynput"),
+        "openai": check_module("openai"),
+        "google_ai": check_module("google.generativeai"),
+        "claude": check_module("anthropic"),
+    }
 
-    # Check input libraries
-    try:
-        import keyboard
+    ollama_status = check_ollama()
 
-        status["keyboard"] = True
-    except ImportError:
-        pass
+    depedency_table = Table(title="🔧 Dependencies Status", show_header=True)
+    depedency_table.add_column("Component", style="cyan", width=20)
+    depedency_table.add_column("Status", width=12)
+    depedency_table.add_column("Notes", style="dim")
 
-    try:
-        import pynput
-
-        status["pynput"] = True
-    except ImportError:
-        pass
-
-    # Check LLM libraries
-    try:
-        import openai
-
-        status["openai"] = True
-    except ImportError:
-        pass
-
-    try:
-        import google.generativeai
-
-        status["google_ai"] = True
-    except ImportError:
-        pass
-
-    # Display status
-    deps_table = Table(title="🔧 Dependencies Status", show_header=True)
-    deps_table.add_column("Component", style="cyan", width=20)
-    deps_table.add_column("Status", width=10)
-    deps_table.add_column("Notes", style="dim")
-
-    # Input handling
     if status["keyboard"]:
-        deps_table.add_row("Input (keyboard)", "✅ Ready", "Best performance")
+        depedency_table.add_row(
+            "Input (keyboard)", Status.READY.value, "Best performance"
+        )
     elif status["pynput"]:
-        deps_table.add_row("Input (pynput)", "✅ Ready", "Good alternative")
+        depedency_table.add_row(
+            "Input (pynput)", Status.READY.value, "Good alternative"
+        )
     else:
-        deps_table.add_row("Input", "⚠️  Limited", "Install 'keyboard' or 'pynput'")
-
-    # LLM providers
-    llm_available = []
-    if status["openai"]:
-        llm_available.append("OpenAI")
-        deps_table.add_row("OpenAI", "✅ Ready", "Requires API key")
-    else:
-        deps_table.add_row("OpenAI", "❌ Missing", "pip install openai")
-
-    if status["google_ai"]:
-        llm_available.append("Gemini")
-        deps_table.add_row("Google Gemini", "✅ Ready", "Free tier available")
-    else:
-        deps_table.add_row(
-            "Google Gemini", "❌ Missing", "pip install google-generativeai"
+        depedency_table.add_row(
+            "Input", Status.LIMITED.value, "Install 'keyboard' or 'pynput'"
         )
 
-    # Always available
-    deps_table.add_row("Ollama (Local)", "✅ Ready", "No API key needed")
+    if status["openai"]:
+        depedency_table.add_row("OpenAI", Status.READY.value, "Requires API key")
+    else:
+        depedency_table.add_row("OpenAI", Status.MISSING.value, "pip install openai")
 
-    console.print(Panel(deps_table, border_style="blue"))
+    if status["google_ai"]:
+        depedency_table.add_row("Google Gemini", Status.READY.value, "Requires API key")
+    else:
+        depedency_table.add_row(
+            "Google Gemini", Status.MISSING.value, "pip install google-generativeai"
+        )
+    if status["claude"]:
+        depedency_table.add_row(
+            "Claude (Anthropic)", Status.READY.value, "Requires API key"
+        )
+    else:
+        depedency_table.add_row(
+            "Claude (Anthropic)", Status.MISSING.value, "pip install anthropic"
+        )
+
+    if ollama_status["installed"]:
+        if ollama_status["running"]:
+            depedency_table.add_row(
+                "Ollama (Local)", Status.READY.value, "Service is running"
+            )
+        else:
+            depedency_table.add_row(
+                "Ollama (Local)", Status.INSTALLED.value, "Start the Ollama service"
+            )
+    else:
+        depedency_table.add_row(
+            "Ollama (Local)", Status.MISSING.value, "Install from https://ollama.com"
+        )
+
+    console.print(Panel(depedency_table, border_style="blue"))
     console.print()
-
-    return status, llm_available
 
 
 def get_player_info():
-    """Get player character information with beautiful prompts"""
     console.print(
         Panel(
             "⚔️ [bold bright_cyan]Create Your Character[/bold bright_cyan] ⚔️",
@@ -180,9 +180,8 @@ def get_player_info():
         )
     )
 
-    # Player name
-    name = Prompt.ask(
-        "[bright_white]Hero Name[/bright_white]",
+    player_name = Prompt.ask(
+        "[bright_white]Hero player_name[/bright_white]",
         default="Adventurer",
         show_default=True,
     )
@@ -215,14 +214,14 @@ def get_player_info():
         "Select class number", choices=["1", "2", "3", "4", "5"], default="1"
     )
 
-    class_names = ["Warrior", "Mage", "Rogue", "Cleric", "Ranger"]
-    selected_class = class_names[int(class_choice) - 1]
+    class_player_names = ["Warrior", "Mage", "Rogue", "Cleric", "Ranger"]
+    selected_class = class_player_names[int(class_choice) - 1]
 
     console.print(
-        f"\n✨ [bold bright_green]{name} the {selected_class}[/bold bright_green] - Ready for adventure!"
+        f"\n✨ [bold bright_green]{player_name} the {selected_class}[/bold bright_green] - Ready for adventure!"
     )
 
-    return name, selected_class
+    return player_name, selected_class
 
 
 def configure_llm(available_providers: list):
@@ -408,7 +407,7 @@ def play(
     model: Optional[str] = typer.Option(
         None,
         "--model",
-        help="Model name override for selected provider.",
+        help="Model player_name override for selected provider.",
     ),
     seed: Optional[int] = typer.Option(
         None,
@@ -428,9 +427,6 @@ def play(
     except Exception:
         pass
 
-    # Welcome
-    show_welcome_screen()
-
     # Terminal sizing (best-effort, don't crash in non-TTY)
     try:
         check_terminal_size()
@@ -442,7 +438,7 @@ def play(
     dep_status, available_llms = check_dependencies()
 
     # Player setup
-    name, role = get_player_info()
+    player_name, role = get_player_info()
 
     # LLM selection (optional)
     selected_provider = None
@@ -457,7 +453,7 @@ def play(
             selected_provider, api_key_status = configure_llm(available_llms)
 
     # Show start sequence
-    show_game_start_sequence(name, role, selected_provider or "visual")
+    show_game_start_sequence(player_name, role, selected_provider or "visual")
 
     # Create game
     llm_instance = None
@@ -483,9 +479,9 @@ def play(
         width=60,
         height=20,
         llm_provider=llm_instance,
-        config=GameConfig(player_name=name, role=role),
+        config=GameConfig(player_name=player_name, role=role),
     )
-    game.initialize_game(player_name=name, player_class=role, seed=seed)
+    game.initialize_game(player_name=player_name, player_class=role, seed=seed)
     try:
         game.run()
     except Exception as e:
@@ -585,22 +581,22 @@ def install():
         )
     )
 
-    deps_table = Table(show_header=True)
-    deps_table.add_column("Package", style="bright_white", width=20)
-    deps_table.add_column("Purpose", style="cyan", width=25)
-    deps_table.add_column("Install Command", style="green")
+    depedency_table = Table(show_header=True)
+    depedency_table.add_column("Package", style="bright_white", width=20)
+    depedency_table.add_column("Purpose", style="cyan", width=25)
+    depedency_table.add_column("Install Command", style="green")
 
-    deps_table.add_row(
+    depedency_table.add_row(
         "keyboard", "Real-time input (Linux/Win)", "pip install keyboard"
     )
-    deps_table.add_row("pynput", "Cross-platform input", "pip install pynput")
-    deps_table.add_row("openai", "OpenAI GPT integration", "pip install openai")
-    deps_table.add_row(
+    depedency_table.add_row("pynput", "Cross-platform input", "pip install pynput")
+    depedency_table.add_row("openai", "OpenAI GPT integration", "pip install openai")
+    depedency_table.add_row(
         "google-generativeai", "Google Gemini AI", "pip install google-generativeai"
     )
-    deps_table.add_row("colorama", "Better Windows colors", "pip install colorama")
+    depedency_table.add_row("colorama", "Better Windows colors", "pip install colorama")
 
-    console.print(deps_table)
+    console.print(depedency_table)
     console.print()
 
     console.print("[bold bright_yellow]💡 Quick Install Commands:[/bold bright_yellow]")
@@ -685,5 +681,5 @@ def status():
     )
 
 
-if __name__ == "__main__":
+if __player_name__ == "__main__":
     app()
